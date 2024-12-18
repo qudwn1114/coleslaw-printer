@@ -24,3 +24,6 @@ COMMAND
 RELEASE 
 - `.exe` 파일을 **릴리즈** 목록에서 다운로드 하여 실행 하 실 수 있습니다.
 
+
+실행파일 만들기
+- $ pyinstaller --onefile --windowed --hidden-import plyer.platforms.win.notification esc_pos.py
