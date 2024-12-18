@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from plyer import notification
 import os
 import platform
@@ -6,6 +7,10 @@ import serial
 import socket
 
 app = Flask(__name__)
+
+# 모든 도메인과 모든 HTTP 메서드에 대해 CORS 허용
+CORS(app, resources={r"*": {"origins": "*"}})
+
 
 def show_notification(title, message):
     current_os = platform.system()
@@ -26,11 +31,14 @@ def is_port_in_use(port):
 
 @app.route('/print', methods=['POST'])
 def print_receipt():
-    data = request.json
+    if request.is_json:
+        data = request.json
+    else:
+        data = request.form.to_dict()  # 폼 데이터를 딕셔너리로 변환
+
     port = data.get("port", "COM3")
     message = data.get("message", "")
     baud_rate = data.get("baud_rate", 9600)
-
     # 프린터 연결 및 출력
     try:
         printer = serial.Serial(port, baud_rate, timeout=1)
