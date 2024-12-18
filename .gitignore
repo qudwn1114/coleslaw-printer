@@ -1,0 +1,21 @@
+# Python Bytecode files
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller files
+/dist/
+/build/
+*.spec
+
+# Windows executables
+*.exe
+
+# MacOS executables
+*.dmg
+*.app
+
+# Distribution files
+*.tar.gz
+*.zip
+esc_pos
