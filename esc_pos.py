@@ -48,7 +48,7 @@ def print_receipt():
         CUT = b'\x1D\x56\x00'  # 용지 자르기 명령
 
         # ESC/POS 명령어로 출력
-        printer.write(INIT + message.encode('utf-8') + CUT)
+        printer.write(INIT + message.encode('cp949') + CUT)
         printer.close()
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
