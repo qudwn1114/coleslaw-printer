@@ -36,11 +36,14 @@ def print_receipt():
     else:
         data = request.form.to_dict()  # 폼 데이터를 딕셔너리로 변환
 
-    port = data.get("port", "COM3")
+    port = data.get("port", "COM2")
     message = data.get("message", "")
     baud_rate = data.get("baud_rate", 9600)
     # 프린터 연결 및 출력
     try:
+        if not message:
+            return jsonify({"status": "fail", "message": "no message..."}), 400
+
         printer = serial.Serial(port, baud_rate, timeout=1)
 
         ESC = b'\x1B'   # ESC
