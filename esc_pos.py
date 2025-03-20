@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from plyer import notification
 import os
@@ -8,21 +8,8 @@ import socket
 
 app = Flask(__name__)
 
-# CORS 전역 설정 (모든 엔드포인트에서 허용)
-CORS(app, supports_credentials=True)
-
-def is_port_in_use(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('127.0.0.1', port)) == 0
-
-# Preflight 요청 (OPTIONS) 처리
-@app.route('/print', methods=['OPTIONS'])
-def preflight():
-    response = jsonify({"message": "CORS preflight allowed."})
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    return response
+# 모든 도메인과 모든 HTTP 메서드에 대해 CORS 허용
+CORS(app, resources={r"*": {"origins": "*"}})
 
 
 def show_notification(title, message):
@@ -37,6 +24,16 @@ def show_notification(title, message):
         os.system(f"osascript -e 'display notification \"{message}\" with title \"{title}\"'")
     else:
         print(f"알림 기능이 {current_os}에서 지원되지 않습니다.")
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
+    
+
+@app.route('/')
+def index():
+    # 기본 페이지 (HTML 파일 렌더링)
+    return render_template('test_print.html')
 
 @app.route('/print', methods=['POST'])
 def print_receipt():
@@ -65,15 +62,6 @@ def print_receipt():
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    
-# 모든 응답에 CORS 헤더 추가 (Preflight 문제 해결)
-@app.after_request
-def after_request(response):
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    return response
-
 
 if __name__ == '__main__':
     PORT=5050

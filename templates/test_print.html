@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프린터 테스트</title>
+    <script>
+        // 버튼 클릭 시 프린터로 메시지를 보내는 함수
+        function printReceipt() {
+            $.ajax({
+                url: "http://localhost:5000/print",  // Python 서버 주소 (수정 가능)
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    port: "COM2",
+                    message: "안녕하세요, 영수증 출력 테스트입니다.",
+                    baud_rate: 9600
+                }),
+                success: function(response) {
+                    console.log("성공:", response);
+                    alert("프린트 성공: " + response.message);
+                },
+                error: function(xhr, status, error) {
+                    console.error("오류 발생:", xhr.responseText);
+                    alert("프린트 실패: " + xhr.responseText);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>프린터 테스트 페이지</h1>
+    <button onclick="printReceipt()">영수증 인쇄</button>
+</body>
+</html>
