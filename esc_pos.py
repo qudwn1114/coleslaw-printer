@@ -61,6 +61,7 @@ def print_receipt():
         printer.close()
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
+        print(e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
