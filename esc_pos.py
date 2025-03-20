@@ -11,6 +11,20 @@ app = Flask(__name__)
 # CORS 전역 설정 (모든 엔드포인트에서 허용)
 CORS(app, supports_credentials=True)
 
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
+
+# Preflight 요청 (OPTIONS) 처리
+@app.route('/print', methods=['OPTIONS'])
+def preflight():
+    response = jsonify({"message": "CORS preflight allowed."})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    return response
+
+
 def show_notification(title, message):
     current_os = platform.system()
     if current_os == "Windows":
@@ -23,10 +37,6 @@ def show_notification(title, message):
         os.system(f"osascript -e 'display notification \"{message}\" with title \"{title}\"'")
     else:
         print(f"알림 기능이 {current_os}에서 지원되지 않습니다.")
-
-def is_port_in_use(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('127.0.0.1', port)) == 0
 
 @app.route('/print', methods=['POST'])
 def print_receipt():
