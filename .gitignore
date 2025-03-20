@@ -19,3 +19,4 @@ __pycache__/
 *.tar.gz
 *.zip
 esc_pos
+.DS_Store

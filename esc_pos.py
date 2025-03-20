@@ -8,9 +8,8 @@ import socket
 
 app = Flask(__name__)
 
-# 모든 도메인과 모든 HTTP 메서드에 대해 CORS 허용
-CORS(app, resources={r"*": {"origins": "*"}})
-
+# CORS 전역 설정 (모든 엔드포인트에서 허용)
+CORS(app, supports_credentials=True)
 
 def show_notification(title, message):
     current_os = platform.system()
@@ -56,6 +55,15 @@ def print_receipt():
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+# 모든 응답에 CORS 헤더 추가 (Preflight 문제 해결)
+@app.after_request
+def after_request(response):
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    return response
+
 
 if __name__ == '__main__':
     PORT=5050
