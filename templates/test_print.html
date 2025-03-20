@@ -7,7 +7,7 @@
     <script>
         // 버튼 클릭 시 프린터로 메시지를 보내는 함수
         function printReceipt() {
-            const message = "테스트 영수증입니다."; // 메시지 내용
+            const message = "테스트 영수증입니다.\n"; // 메시지 내용
             const port = "COM2"; // 프린터 포트 (필요에 따라 변경)
             const baudRate = 9600; // 보드 레이트 (필요에 따라 변경)
             fetch('http://127.0.0.1:5050/print', {
