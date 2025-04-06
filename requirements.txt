@@ -3,3 +3,5 @@ flask-cors==5.0.0
 pyserial==3.5
 plyer==2.1.0
 pyinstaller==6.11.1
+pystray==0.19.5
+pillow==11.1.0

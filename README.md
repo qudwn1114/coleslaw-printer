@@ -27,4 +27,4 @@ RELEASE
 
 
 실행파일 만들기
-- $ pyinstaller --onefile --windowed --hidden-import plyer.platforms.win.notification esc_pos.py
+- $ pyinstaller --noconfirm --onefile --windowed --icon=printer.ico --add-data "templates;templates" --hidden-import=plyer.platforms.win.notification esc_pos.py
