@@ -10,8 +10,46 @@ import webbrowser
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QGraphicsDropShadowEffect
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QColor
+
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "*"}})
+PORT = 5050
+
+class SplashScreen(QWidget):
+    def __init__(self, message="Coleslaw Printer 서버를 준비 중입니다...", timeout=3000):
+        super().__init__()
+        self.setWindowTitle("로딩 중")
+        self.setFixedSize(400, 150)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setStyleSheet("background-color: white; border-radius: 15px;")
+
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        shadow.setOffset(0, 5)
+        self.setGraphicsEffect(shadow)
+
+        self.label = QLabel(message, self)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.label.setGeometry(0, 0, 400, 150)
+
+        screen = QApplication.primaryScreen().availableGeometry()
+        x = (screen.width() - self.width()) // 2
+        y = (screen.height() - self.height()) // 2
+        self.move(x, y)
+
+        QTimer.singleShot(timeout, self.close)
+
+def show_splash_message(message, timeout=3000):
+    app = QApplication(sys.argv)
+    splash = SplashScreen(message=message, timeout=timeout)
+    splash.show()
+    QTimer.singleShot(timeout, app.quit)
+    app.exec()
 
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
@@ -81,7 +119,7 @@ def cleanup_old_startup_entry(app_name="PrintServer"):
         registered_path, _ = winreg.QueryValueEx(registry_key, app_name)
         winreg.CloseKey(registry_key)
         if registered_path != current_path:
-            print(f"[⚠️] 등록된 경로가 현재 실행 경로와 다릅니다. 기존 경로 제거: {registered_path}")
+            print(f"[\u26a0\ufe0f] 등록된 경로가 현재 실행 경로와 다르네요. 기존 경로 제거: {registered_path}")
             remove_from_startup(app_name)
     except FileNotFoundError:
         pass
@@ -118,7 +156,6 @@ def print_receipt():
         print(e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# ✅ 트레이 아이콘
 def create_tray():
     import pystray
     from pystray import MenuItem as item
@@ -136,7 +173,7 @@ def create_tray():
         icon.update_menu()
 
     def open_web(icon, item):
-        webbrowser.open("http://127.0.0.1:5050/")
+        webbrowser.open(f"http://127.0.0.1:{PORT}/")
 
     image = Image.open(resource_path("printer.ico"))
 
@@ -149,13 +186,15 @@ def create_tray():
     tray_icon = pystray.Icon("print_server", image, "Coleslaw Printer", tray_menu)
     tray_icon.run()
 
-# 🏁 메인 실행
 if __name__ == '__main__':
-    PORT = 5050
+
     if is_port_in_use(PORT):
-        show_notification("포트 충돌", f"포트 {PORT}가 이미 사용 중 입니다.")
+        # 이미 실행 중이면 안내 후 종료
+        show_splash_message("Coleslaw Printer는 이미 실행 중입니다.", timeout=3000)
+        sys.exit(0)
     else:
-        show_notification("실행 알림", "프린트 서버 실행 완료!")
+        # 서버 실행 준비 완료 메시지 후 실행
+        show_splash_message("Coleslaw Printer 서버를 준비 중입니다...", timeout=3000)
 
         if platform.system() == "Windows":
             cleanup_old_startup_entry()
