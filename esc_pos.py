@@ -5,6 +5,7 @@ import socket
 import serial
 import sys
 import winreg
+import webbrowser
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
@@ -12,10 +13,14 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "*"}})
 
-# 🔔 OS별 알림 함수
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
 def show_notification(title, message):
     current_os = platform.system()
-    if current_os == "Darwin":  # macOS
+    if current_os == "Darwin":
         os.system(f"osascript -e 'display notification \"{message}\" with title \"{title}\"'")
     elif current_os == "Windows":
         try:
@@ -26,12 +31,10 @@ def show_notification(title, message):
     else:
         print("지원하지 않는 OS")
 
-# 🖠 포트 중복 검사
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('127.0.0.1', port)) == 0
 
-# ✅ 시작 프로그램 등록/해제 함수 (Windows 전용)
 def add_to_startup(app_name="PrintServer", exe_path=None):
     if exe_path is None:
         exe_path = sys.executable
@@ -63,13 +66,26 @@ def is_in_startup(app_name="PrintServer"):
     reg_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
     try:
         registry_key = winreg.OpenKey(key, reg_path, 0, winreg.KEY_READ)
-        winreg.QueryValueEx(registry_key, app_name)
+        value, _ = winreg.QueryValueEx(registry_key, app_name)
         winreg.CloseKey(registry_key)
-        return True
+        return value == sys.executable
     except FileNotFoundError:
         return False
 
-# 🌐 라우트
+def cleanup_old_startup_entry(app_name="PrintServer"):
+    key = winreg.HKEY_CURRENT_USER
+    reg_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+    current_path = sys.executable
+    try:
+        registry_key = winreg.OpenKey(key, reg_path, 0, winreg.KEY_READ)
+        registered_path, _ = winreg.QueryValueEx(registry_key, app_name)
+        winreg.CloseKey(registry_key)
+        if registered_path != current_path:
+            print(f"[⚠️] 등록된 경로가 현재 실행 경로와 다릅니다. 기존 경로 제거: {registered_path}")
+            remove_from_startup(app_name)
+    except FileNotFoundError:
+        pass
+
 @app.route('/')
 def index():
     return render_template('test_print.html')
@@ -102,7 +118,7 @@ def print_receipt():
         print(e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 🪟 트레이 아이콘 (Windows 전용)
+# ✅ 트레이 아이콘
 def create_tray():
     import pystray
     from pystray import MenuItem as item
@@ -115,35 +131,34 @@ def create_tray():
     def toggle_startup(icon, item):
         if is_in_startup():
             remove_from_startup()
-            item.checked = False
         else:
             add_to_startup()
-            item.checked = True
         icon.update_menu()
 
-    image = Image.open("icon.ico")  # ico 파일 위치
+    def open_web(icon, item):
+        webbrowser.open("http://127.0.0.1:5050/")
 
-    startup_item = item(
-        '시작 프로그램 등록', toggle_startup, checked=lambda item: is_in_startup()
+    image = Image.open(resource_path("printer.ico"))
+
+    tray_menu = pystray.Menu(
+        item('테스트 페이지 열기', open_web),
+        item('시작 프로그램 등록', toggle_startup, checked=lambda _: is_in_startup()),
+        item('종료', on_exit)
     )
 
-    menu = pystray.Menu(
-        item('종료', on_exit),
-        startup_item
-    )
-
-    tray_icon = pystray.Icon("print_server", image, "ESC/POS Print Server", menu)
+    tray_icon = pystray.Icon("print_server", image, "Coleslaw Printer", tray_menu)
     tray_icon.run()
 
 # 🏁 메인 실행
 if __name__ == '__main__':
     PORT = 5050
     if is_port_in_use(PORT):
-        show_notification("포트 충돌", f"포트 {PORT}가 이미 사용 중 입니다.!")
+        show_notification("포트 충돌", f"포트 {PORT}가 이미 사용 중 입니다.")
     else:
         show_notification("실행 알림", "프린트 서버 실행 완료!")
 
         if platform.system() == "Windows":
+            cleanup_old_startup_entry()
             threading.Thread(target=create_tray, daemon=True).start()
         else:
             print("macOS는 트레이 미지원")
