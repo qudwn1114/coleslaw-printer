@@ -7,9 +7,16 @@
     <script>
         // 버튼 클릭 시 프린터로 메시지를 보내는 함수
         function printReceipt() {
-            const message = "테스트 영수증입니다.\n"; // 메시지 내용
-            const port = "COM2"; // 프린터 포트 (필요에 따라 변경)
-            const baudRate = 9600; // 보드 레이트 (필요에 따라 변경)
+            const message = document.getElementById("message").value;
+            const port = document.getElementById("port").value;
+            const baudRate = parseInt(document.getElementById("baudRate").value);
+
+            if (!message || !port || !baudRate) {
+                alert("모든 값을 입력해주세요.");
+                return;
+            }
+
+            
             fetch('http://127.0.0.1:5050/print', {
                 method: 'POST',
                 headers: {
@@ -17,7 +24,7 @@
                 },
                 body: JSON.stringify({
                     port: port,
-                    message: message,
+                    message: message + "\n",
                     baud_rate: baudRate
                 })
             })
@@ -33,6 +40,22 @@
 </head>
 <body>
     <h1>프린터 테스트 페이지</h1>
+    <div>
+        <label for="port">Port:</label><br>
+        <input type="text" id="port" value="COM2">
+    </div>
+    <br>
+
+    <div>
+        <label for="baudRate">Baud Rate:</label><br>
+        <input type="number" id="baudRate" value="9600">
+    </div>
+    <br>
+
+    <div>
+        <label for="message">Message:</label><br>
+        <textarea id="message" rows="5" cols="40">테스트 영수증입니다.</textarea>
+    </div>
     <button onclick="printReceipt()">영수증 인쇄</button>
 </body>
 </html>
