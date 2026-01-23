@@ -219,6 +219,47 @@ def create_test_image():
 
     img.save("test_image.png")
 
+
+def image_to_esc_bytes(img):
+    THRESHOLD = 200
+
+    # 그레이스케일 → 1비트
+    img = img.convert("L")
+    img = img.point(lambda x: 0 if x < THRESHOLD else 255, '1')
+
+    # 사이즈 맞춤
+    if img.width != PRINTER_WIDTH:
+        img = img.resize(
+            (PRINTER_WIDTH, int(img.height * (PRINTER_WIDTH / img.width))), Image.NEAREST
+        )
+
+    width, height = img.size
+    bytes_per_row = math.ceil(width / 8)
+
+    data = bytearray()
+    data += b'\x1B\x40'  # 초기화
+    data += b'\x1D\x76\x30\x00'
+    data += bytes([
+        bytes_per_row & 0xFF,
+        (bytes_per_row >> 8) & 0xFF,
+        height & 0xFF,
+        (height >> 8) & 0xFF
+    ])
+
+    pixels = img.load()
+    for y in range(height):
+        row = bytearray()
+        for x in range(0, width, 8):
+            byte = 0
+            for bit in range(8):
+                if x + bit < width and pixels[x + bit, y] == 0:
+                    byte |= 1 << (7 - bit)
+            row.append(byte)
+        data += row
+
+    data += b'\x1D\x56\x00'  # 커터
+    return data
+
 def load_image(image_url=None):
     if image_url:
         rsp = requests.get(image_url, timeout=5)
@@ -264,6 +305,13 @@ def print_image(printer, img):
         printer.write(row)
 
 if __name__ == '__main__':
+    img = create_test_image()
+    esc_bytes = image_to_esc_bytes(img)
+
+    with open("test_image.bin", "wb") as f:
+        f.write(esc_bytes)
+    print("Saved ESC/POS bytes to test_image.bin")
+
     if is_port_in_use(PORT):
         # 이미 실행 중이면 안내 후 종료
         show_splash_message("Coleslaw Printer는 이미 실행 중입니다.", timeout=3000)
