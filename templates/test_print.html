@@ -7,11 +7,10 @@
     <script>
         // 버튼 클릭 시 프린터로 메시지를 보내는 함수
         function printReceipt() {
-            const message = document.getElementById("message").value;
             const port = document.getElementById("port").value;
             const baudRate = parseInt(document.getElementById("baudRate").value);
 
-            if (!message || !port || !baudRate) {
+            if (!port || !baudRate) {
                 alert("모든 값을 입력해주세요.");
                 return;
             }
@@ -24,7 +23,6 @@
                 },
                 body: JSON.stringify({
                     port: port,
-                    message: message + "\n",
                     baud_rate: baudRate
                 })
             })
@@ -51,11 +49,6 @@
         <input type="number" id="baudRate" value="9600">
     </div>
     <br>
-
-    <div>
-        <label for="message">Message:</label><br>
-        <textarea id="message" rows="5" cols="40">테스트 영수증입니다.</textarea>
-    </div>
     <button onclick="printReceipt()">영수증 인쇄</button>
 </body>
 </html>

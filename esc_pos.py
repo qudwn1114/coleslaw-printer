@@ -6,9 +6,14 @@ import serial
 import sys
 import winreg
 import webbrowser
+import requests
+import math
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QGraphicsDropShadowEffect
 from PyQt6.QtCore import Qt, QTimer
@@ -136,20 +141,23 @@ def print_receipt():
         data = request.form.to_dict()
 
     port = data.get("port", "COM2")
-    message = data.get("message", "")
     baud_rate = data.get("baud_rate", 9600)
+    image_url = data.get("image_url")
 
     try:
-        if not message:
-            return jsonify({"status": "fail", "message": "no message..."}), 400
-
         printer = serial.Serial(port, baud_rate, timeout=1)
 
         ESC = b'\x1B'
         INIT = ESC + b'@'
         CUT = b'\x1D\x56\x00'
 
-        printer.write(INIT + message.encode('cp949') + CUT)
+        printer.write(INIT)
+        
+        img = load_image(image_url)
+        print_image(printer, img)
+
+        printer.write(b'\x1B\x64\x06') #종이 아래로 6줄 이동
+        printer.write(CUT)
         printer.close()
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
@@ -159,7 +167,6 @@ def print_receipt():
 def create_tray():
     import pystray
     from pystray import MenuItem as item
-    from PIL import Image
 
     def on_exit(icon, item):
         icon.stop()
@@ -186,8 +193,77 @@ def create_tray():
     tray_icon = pystray.Icon("print_server", image, "Coleslaw Printer", tray_menu)
     tray_icon.run()
 
-if __name__ == '__main__':
+PRINTER_WIDTH = 512
+def create_test_image():
+    width = PRINTER_WIDTH
+    height = 300
 
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+
+    # 상단/하단 가이드
+    draw.rectangle((0, 0, width-1, height-1), outline="black")
+    
+    # 중앙 가이드
+    draw.line((width//2, 0, width//2, height), fill="black")
+
+    # 테스트 박스
+    draw.rectangle((10, 10, width-10, 80), outline="black")
+    draw.rectangle((10, 100, width-10, 170), outline="black")
+
+    font_path = "ARIAL.TTF"
+    font_size = 20
+    font = ImageFont.truetype(font_path, font_size)
+    draw.text((20, 20), f"TEST IMAGE {width}px", fill="black", font=font)
+    draw.text((20, 110), "WIDTH CHECK", fill="black", font=font)
+
+    img.save("test_image.png")
+
+def load_image(image_url=None):
+    if image_url:
+        rsp = requests.get(image_url, timeout=5)
+        rsp.raise_for_status()
+        img = Image.open(BytesIO(rsp.content))
+    else:
+        img = Image.open(resource_path("test_image.png"))
+    
+    return img
+
+def print_image(printer, img):
+    THRESHOLD = 200
+
+    img = img.convert("L")
+
+    img = img.point(lambda x: 0 if x < THRESHOLD else 255, '1')
+
+    if img.width != PRINTER_WIDTH:
+        img = img.resize(
+            (PRINTER_WIDTH, int(img.height * (PRINTER_WIDTH / img.width)), Image.NEAREST)
+        )
+
+    width, height = img.size
+    bytes_per_row = math.ceil(width/8)
+
+    printer.write(b'\x1D\x76\x30\x00')
+    printer.write(bytes([
+        bytes_per_row & 0xFF,
+        (bytes_per_row >> 8) & 0xFF,
+        height & 0xFF,
+        (height >> 8) & 0xFF
+    ]))
+
+    pixels = img.load()
+    for y in range(height):
+        row = bytearray()
+        for x in range(0, width, 8):
+            byte = 0
+            for bit in range(8):
+                if x + bit < width and pixels[x + bit, y] == 0:
+                    byte |= 1 << (7 - bit)
+            row.append(byte)
+        printer.write(row)
+
+if __name__ == '__main__':
     if is_port_in_use(PORT):
         # 이미 실행 중이면 안내 후 종료
         show_splash_message("Coleslaw Printer는 이미 실행 중입니다.", timeout=3000)
