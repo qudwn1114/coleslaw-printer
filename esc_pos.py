@@ -6,8 +6,7 @@ import serial
 import sys
 import winreg
 import webbrowser
-import requests
-import math
+import requests, math, time, base64
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
@@ -133,6 +132,12 @@ def cleanup_old_startup_entry(app_name="PrintServer"):
 def index():
     return render_template('test_print.html')
 
+
+@app.route('/test', methods=['POST'])
+def test():
+    print("now!!!")
+
+    return jsonify({"status": "success", "message": "Printed successfully."}), 200
 @app.route('/print', methods=['POST'])
 def print_receipt():
     if request.is_json:
@@ -142,22 +147,13 @@ def print_receipt():
 
     port = data.get("port", "COM2")
     baud_rate = data.get("baud_rate", 9600)
-    image_url = data.get("image_url")
-
+    esc_bytes = data.get("esc_bytes")
     try:
         printer = serial.Serial(port, baud_rate, timeout=1)
-
-        ESC = b'\x1B'
-        INIT = ESC + b'@'
-        CUT = b'\x1D\x56\x00'
-
-        printer.write(INIT)
-        
-        img = load_image(image_url)
-        print_image(printer, img)
-
-        printer.write(b'\x1B\x64\x06') #종이 아래로 6줄 이동
-        printer.write(CUT)
+        if not esc_bytes:
+            img = Image.open(resource_path("test_image.png"))
+            esc_bytes = image_to_esc_bytes(img=img)
+        printer.write(esc_bytes)
         printer.close()
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
@@ -218,6 +214,7 @@ def create_test_image():
     draw.text((20, 110), "WIDTH CHECK", fill="black", font=font)
 
     img.save("test_image.png")
+    return img
 
 
 def image_to_esc_bytes(img):
@@ -257,61 +254,11 @@ def image_to_esc_bytes(img):
             row.append(byte)
         data += row
 
+    data += b'\x1B\x64\x06' # 6줄 아래
     data += b'\x1D\x56\x00'  # 커터
     return data
 
-def load_image(image_url=None):
-    if image_url:
-        rsp = requests.get(image_url, timeout=5)
-        rsp.raise_for_status()
-        img = Image.open(BytesIO(rsp.content))
-    else:
-        img = Image.open(resource_path("test_image.png"))
-    
-    return img
-
-def print_image(printer, img):
-    THRESHOLD = 200
-
-    img = img.convert("L")
-
-    img = img.point(lambda x: 0 if x < THRESHOLD else 255, '1')
-
-    if img.width != PRINTER_WIDTH:
-        img = img.resize(
-            (PRINTER_WIDTH, int(img.height * (PRINTER_WIDTH / img.width)), Image.NEAREST)
-        )
-
-    width, height = img.size
-    bytes_per_row = math.ceil(width/8)
-
-    printer.write(b'\x1D\x76\x30\x00')
-    printer.write(bytes([
-        bytes_per_row & 0xFF,
-        (bytes_per_row >> 8) & 0xFF,
-        height & 0xFF,
-        (height >> 8) & 0xFF
-    ]))
-
-    pixels = img.load()
-    for y in range(height):
-        row = bytearray()
-        for x in range(0, width, 8):
-            byte = 0
-            for bit in range(8):
-                if x + bit < width and pixels[x + bit, y] == 0:
-                    byte |= 1 << (7 - bit)
-            row.append(byte)
-        printer.write(row)
-
 if __name__ == '__main__':
-    img = create_test_image()
-    esc_bytes = image_to_esc_bytes(img)
-
-    with open("test_image.bin", "wb") as f:
-        f.write(esc_bytes)
-    print("Saved ESC/POS bytes to test_image.bin")
-
     if is_port_in_use(PORT):
         # 이미 실행 중이면 안내 후 종료
         show_splash_message("Coleslaw Printer는 이미 실행 중입니다.", timeout=3000)
