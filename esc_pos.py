@@ -132,12 +132,6 @@ def cleanup_old_startup_entry(app_name="PrintServer"):
 def index():
     return render_template('test_print.html')
 
-
-@app.route('/test', methods=['POST'])
-def test():
-    print("now!!!")
-
-    return jsonify({"status": "success", "message": "Printed successfully."}), 200
 @app.route('/print', methods=['POST'])
 def print_receipt():
     if request.is_json:
@@ -145,15 +139,27 @@ def print_receipt():
     else:
         data = request.form.to_dict()
 
+    locale = data.get("locale", "ko_KR")
     port = data.get("port", "COM2")
     baud_rate = data.get("baud_rate", 9600)
-    esc_bytes = data.get("esc_bytes")
+    message = data.get("message")
+    if locale == 'ko_KR':
+        encoding = 'cp949'
+    elif locale == 'ja_JP':
+        encoding = 'shift_jis'
+    else:
+        return jsonify({"status": "error", "message": '지원하지 않는 locale 입니다'}), 400
+
     try:
         printer = serial.Serial(port, baud_rate, timeout=1)
-        if not esc_bytes:
-            img = Image.open(resource_path("test_image.png"))
-            esc_bytes = image_to_esc_bytes(img=img)
-        printer.write(esc_bytes)
+
+        ESC = b'\x1B'
+        INIT = ESC + b'@'
+
+        BLANK_SPACE = b'\x1B\x64\x06' # 6줄 아래
+        CUT = b'\x1D\x56\x00'
+
+        printer.write(INIT + message.encode(encoding) + BLANK_SPACE + CUT)
         printer.close()
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:

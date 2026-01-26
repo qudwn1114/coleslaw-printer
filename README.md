@@ -27,4 +27,4 @@ RELEASE
 
 
 실행파일 만들기
-- $ pyinstaller --noconfirm --onefile --windowed --icon=printer.ico --add-data "templates;templates" --add-data "printer.ico;." --add-data "test_image_png" --hidden-import=plyer.platforms.win.notification --name "Coleslaw Printer" esc_pos.py
+- $ pyinstaller --noconfirm --onefile --windowed --icon=printer.ico --add-data "templates;templates" --add-data "printer.ico;." --hidden-import=plyer.platforms.win.notification --name "Coleslaw Printer" esc_pos.py
