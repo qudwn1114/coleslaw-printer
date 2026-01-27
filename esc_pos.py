@@ -132,6 +132,24 @@ def cleanup_old_startup_entry(app_name="PrintServer"):
 def index():
     return render_template('test_print.html')
 
+ESC = b'\x1B'
+INIT = ESC + b'@'
+ALIGN_CENTER = b'\x1B\x61\x01'  # ESC a 1
+ALIGN_LEFT   = b'\x1B\x61\x00'  # ESC a 0 (원래대로)
+BLANK_SPACE = b'\x1B\x64\x06' # 6줄 아래
+CUT = b'\x1D\x56\x00'
+BARCODE_HEIGHT = b'\x1D\x68\x64' # height 100
+BARCODE_WIDTH = b'\x1D\x77\x02' # width 2
+HRI_POSITION = b'\x1D\x48\x02' #숫자 아래 출력
+BARCODE_CODE128 = b'\x1D\x6B\x49' # CODE128
+
+QR_MODEL_2   = b'\x1D\x28\x6B\x04\x00\x31\x41\x32\x00'  # Model 2
+QR_SIZE_4 = b'\x1D\x28\x6B\x03\x00\x31\x43\x04'
+QR_SIZE_6    = b'\x1D\x28\x6B\x03\x00\x31\x43\x06'
+QR_SIZE_8 = b'\x1D\x28\x6B\x03\x00\x31\x43\x08'
+QR_ERROR_M  = b'\x1D\x28\x6B\x03\x00\x31\x45\x31'      # error correction M
+QR_PRINT    = b'\x1D\x28\x6B\x03\x00\x31\x51\x30'      # print
+
 @app.route('/print', methods=['POST'])
 def print_receipt():
     if request.is_json:
@@ -143,6 +161,8 @@ def print_receipt():
     port = data.get("port", "COM2")
     baud_rate = data.get("baud_rate", 9600)
     message = data.get("message")
+    barcode = data.get("barcode")
+    qrcode = data.get("qrcode")
     if locale == 'ko_KR':
         encoding = 'cp949'
     elif locale == 'ja_JP':
@@ -153,18 +173,54 @@ def print_receipt():
     try:
         printer = serial.Serial(port, baud_rate, timeout=1)
 
-        ESC = b'\x1B'
-        INIT = ESC + b'@'
+        print_bytes = INIT + message.encode(encoding, errors='replace')
+        
+        if barcode:
+            barcode_bytes = barcode.encode('ascii')
+            print_bytes += (
+                b'\n\n' +
+                ALIGN_CENTER +
+                BARCODE_HEIGHT +
+                BARCODE_WIDTH +
+                HRI_POSITION +
+                BARCODE_CODE128 +
+                bytes([len(barcode_bytes)]) +
+                barcode_bytes +
+                ALIGN_LEFT 
+            )
+        if qrcode:
+            qr_bytes = qrcode.encode('utf-8')
 
-        BLANK_SPACE = b'\x1B\x64\x06' # 6줄 아래
-        CUT = b'\x1D\x56\x00'
-
-        printer.write(INIT + message.encode(encoding, errors='replace') + BLANK_SPACE + CUT)
+            print_bytes += (
+                b'\n\n' +
+                ALIGN_CENTER +
+                QR_MODEL_2 +
+                QR_SIZE_8 +
+                QR_ERROR_M +
+                qr_store(qr_bytes) +
+                QR_PRINT +
+                ALIGN_LEFT
+            )
+        print_bytes += BLANK_SPACE + CUT
+        printer.write(print_bytes)
         printer.close()
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
         print(e)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+def qr_store(data: bytes) -> bytes:
+    length = len(data) + 3
+    pL = length & 0xFF
+    pH = (length >> 8) & 0xFF
+
+    return (
+        b'\x1D\x28\x6B' +
+        bytes([pL, pH]) +
+        b'\x31\x50\x30' +
+        data
+    )
+
 
 def create_tray():
     import pystray

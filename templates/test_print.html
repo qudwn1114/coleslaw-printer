@@ -11,6 +11,8 @@
             const message = document.getElementById("message").value;
             const port = document.getElementById("port").value;
             const baudRate = parseInt(document.getElementById("baudRate").value);
+            const barcode = document.getElementById("barcode").value;
+            const qrcode = document.getElementById("qrcode").value;
 
             if (!locale || !message || !port || !baudRate) {
                 alert("모든 값을 입력해주세요.");
@@ -27,7 +29,9 @@
                     locale: locale,
                     port: port,
                     message: message,
-                    baud_rate: baudRate
+                    baud_rate: baudRate,
+                    barcode: barcode,
+                    qrcode: qrcode,
                 })
             })
             .then(response => response.json())
@@ -65,6 +69,16 @@
     <div>
         <label for="message">Message:</label><br>
         <textarea id="message" rows="5" cols="40">테스트 영수증입니다.</textarea>
+    </div>
+    <br>
+    <div>
+        <label for="Barcode">Barcode:</label><br>
+        <input type="text" id="barcode" value="">
+    </div>
+    <br>
+    <div>
+        <label for="QRcode">QRcode:</label><br>
+        <input type="text" id="qrcode" value="">
     </div>
     <br>
     <button onclick="printReceipt()">영수증 인쇄</button>
