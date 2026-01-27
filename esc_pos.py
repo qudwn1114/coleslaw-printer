@@ -159,7 +159,7 @@ def print_receipt():
         BLANK_SPACE = b'\x1B\x64\x06' # 6줄 아래
         CUT = b'\x1D\x56\x00'
 
-        printer.write(INIT + message.encode(encoding) + BLANK_SPACE + CUT)
+        printer.write(INIT + message.encode(encoding, errors='replace') + BLANK_SPACE + CUT)
         printer.close()
         return jsonify({"status": "success", "message": "Printed successfully."}), 200
     except Exception as e:
