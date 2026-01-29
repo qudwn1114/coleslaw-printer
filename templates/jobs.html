@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Print Job Log</title>
+</head>
+<body>
+    <h1>프린트 Log</h1>
+
+    <button id="prevBtn" onclick="changeDate(-1)">◀ 전날</button>
+    <span id="dateText"></span>
+    <button id="nextBtn" onclick="changeDate(1)">다음날 ▶</button>
+
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Job ID</th>
+                <th>요청시간</th>
+                <th>출력시간</th>
+                <th>연결</th>
+                <th>상태</th>
+                <th>재출력</th>
+            </tr>
+        </thead>
+        <tbody id="jobTable"></tbody>
+    </table>
+
+    <script>
+        let currentDate = new Date();
+        const today = new Date();
+
+        function formatDate(d) {
+            return d.toISOString().slice(0, 10);
+        }
+
+        function updateButtons() {
+            const nextBtn = document.getElementById("nextBtn");
+            if (formatDate(currentDate) >= formatDate(today)) {
+                nextBtn.disabled = true;
+            } else {
+                nextBtn.disabled = false;
+            }
+        }
+
+        function loadJobs() {
+            const dateStr = formatDate(currentDate);
+            document.getElementById("dateText").innerText = dateStr;
+
+            updateButtons();
+
+            fetch(`/jobs?date=${dateStr}`)
+                .then(res => res.json())
+                .then(data => {
+                    const tbody = document.getElementById('jobTable');
+                    tbody.innerHTML = "";
+                    
+                    data.forEach(job => {
+                        const statusColor = job.status === 'failed' ? 'red' : 'black';
+
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><a href="/jobs/${job.job_id}">${job.job_id}</a></td>
+                            <td>${job.created_at}</td>
+                            <td>${job.printed_at || ''}</td>
+                            <td>${job.connection_type}</td>
+                            <td style="color:${statusColor}">${job.status}</td>
+                            <td><button onclick="reprint('${job.job_id}')">재출력 (${job.retry_count || 0})</button></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                });
+        }
+
+        function changeDate(offset) {
+            currentDate.setDate(currentDate.getDate() + offset);
+            loadJobs();
+        }
+
+        function reprint(jobId) {
+            fetch('/reprint', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_id: jobId })
+            })
+            .then(res => {
+                return res.json().then(data => {
+                    if (!res.ok) {
+                        throw new Error(data.message || "Unknown error");
+                    }
+                    return data;
+                });
+            })
+            .then(data => {
+                alert("재출력 요청됨: " + data.job_id);
+                loadJobs();
+            })
+            .catch(err => {
+                alert("재출력 실패: " + err.message);
+            });
+        }
+
+        loadJobs();
+    </script>
+</body>
+</html>

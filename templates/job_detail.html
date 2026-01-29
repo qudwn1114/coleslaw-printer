@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Log Detail</title>
+</head>
+<body>
+    <h1>Log 상세</h1>
+    <button onclick="goBack()">뒤로</button>
+    <div id="detail"></div>
+
+    <script>
+        const jobId = "{{ job_id }}";
+
+        function goBack() {
+            window.history.back();
+        }
+
+        fetch(`/api/jobs/${jobId}`)
+            .then(res => res.json())
+            .then(job => {
+                document.getElementById("detail").innerHTML = `
+                    <p><b>job_id:</b> ${job.job_id}</p>
+                    <p><b>created_at:</b> ${job.created_at}</p>
+                    <p><b>printed_at:</b> ${job.printed_at || ''}</p>
+                    <p><b>connection_type:</b> ${job.connection_type}</p>
+                    <p><b>serial_port:</b> ${job.serial_port}</p>
+                    <p><b>baud_rate:</b> ${job.baud_rate}</p>
+                    <p><b>network_ip:</b> ${job.network_ip}</p>
+                    <p><b>network_port:</b> ${job.network_port}</p>
+                    <p><b>locale:</b> ${job.locale}</p>
+                    <p><b>message:</b> ${job.full_message}</p>
+                    <p><b>barcode:</b> ${job.barcode}</p>
+                    <p><b>qrcode:</b> ${job.qrcode}</p>
+                    <p><b>status:</b> ${job.status}</p>
+                    <p style="color:red"><b>error:</b> ${job.error_message || ''}</p>
+                `;
+            });
+    </script>
+</body>
+</html>

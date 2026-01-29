@@ -7,8 +7,13 @@ import sys
 import winreg
 import webbrowser
 import requests, math, time, base64
+import uuid
+import sqlite3
 
+from serial.tools import list_ports
 from queue import Queue
+from datetime import datetime, timedelta
+
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
@@ -19,23 +24,135 @@ from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QGraphicsDropShadowEf
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor
 
+from pathlib import Path
+
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "*"}})
 PORT = 5050
 
+MAX_RETRY = 5
+
 print_queue = Queue()
 
-def printer_worker():
+APP_DIR = Path(os.getenv("LOCALAPPDATA")) / "ColeslawPrinter"
+APP_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = APP_DIR / "print_jobs.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS print_jobs (
+            job_id TEXT PRIMARY KEY,
+            created_at TEXT,
+            printed_at TEXT,
+            connection_type TEXT,
+            serial_port TEXT,
+            baud_rate INTEGER,
+            network_ip TEXT,
+            network_port INTEGER,
+            locale TEXT,
+            full_message TEXT,
+            barcode TEXT,
+            qrcode TEXT,
+            status TEXT,
+            error_message TEXT,
+            retry_count INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def insert_job(job):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO print_jobs (
+            job_id, created_at, printed_at, connection_type,
+            serial_port, baud_rate, network_ip, network_port,
+            locale, full_message, barcode, qrcode,
+            status, error_message, retry_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        job["job_id"], job["created_at"], job.get("printed_at"),
+        job["connection_type"], job.get("serial_port"), job.get("baud_rate"),
+        job.get("network_ip"), job.get("network_port"),
+        job["locale"], job["full_message"], job.get("barcode"), job.get("qrcode"),
+        job["status"], job.get("error_message"), job.get("retry_count", 0)
+    ))
+    conn.commit()
+    conn.close()
+
+def get_job(job_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM print_jobs WHERE job_id=?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    columns = [col[0] for col in cursor.description]
+    return dict(zip(columns, row))
+
+def update_job(job_id, status, error_message=None, printed_at=None):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE print_jobs
+        SET status = ?, error_message = ?, printed_at = ?
+        WHERE job_id = ?
+    """, (status, error_message, printed_at, job_id))
+    conn.commit()
+    conn.close()
+
+def cleanup_old_jobs(days=7):
+    cutoff = datetime.now() - timedelta(days=days)
+    cutoff_iso = cutoff.isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM print_jobs
+        WHERE created_at < ?
+    """, (cutoff_iso,))
+    conn.commit()
+    conn.close()
+
+def list_jobs_by_date(target_date):
+    # target_date: "YYYY-MM-DD"
+    start = datetime.fromisoformat(target_date + "T00:00:00")
+    end = start + timedelta(days=1)
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT job_id, created_at, printed_at, connection_type, status, retry_count
+        FROM print_jobs
+        WHERE created_at >= ? AND created_at < ?
+        ORDER BY created_at DESC
+    """, (start.isoformat(), end.isoformat()))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def increment_retry_count(job_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE print_jobs
+        SET retry_count = retry_count + 1
+        WHERE job_id = ?
+    """, (job_id,))
+    conn.commit()
+    conn.close()
+
+def worker():
     while True:
         job = print_queue.get()
-        try:
-            job()
-        except Exception as e:
-            print("Print job error:", e)
-        finally:
-            print_queue.task_done()
+        print_job(job)
+        print_queue.task_done()
 
-threading.Thread(target=printer_worker, daemon=True).start()
+threading.Thread(target=worker, daemon=True).start()
 
 
 class SplashScreen(QWidget):
@@ -148,6 +265,41 @@ def cleanup_old_startup_entry(app_name="PrintServer"):
 def index():
     return render_template('test_print.html')
 
+@app.route('/log')
+def log_page():
+    return render_template('jobs.html')
+
+@app.route('/jobs/<job_id>')
+def job_detail_page(job_id):
+    return render_template("job_detail.html", job_id=job_id)
+
+@app.route('/jobs', methods=['GET'])
+def list_jobs():
+    date_str = request.args.get("date")
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+
+    rows = list_jobs_by_date(date_str)
+
+    jobs = []
+    for row in rows:
+        jobs.append({
+            "job_id": row[0],
+            "created_at": row[1],
+            "printed_at": row[2],
+            "connection_type": row[3],
+            "status": row[4],
+            "retry_count": row[5]
+        })
+    return jsonify(jobs)
+
+@app.route('/api/jobs/<job_id>')
+def api_job_detail(job_id):
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(job)
+
 ESC = b'\x1B'
 INIT = ESC + b'@'
 ALIGN_CENTER = b'\x1B\x61\x01'  # ESC a 1
@@ -166,29 +318,20 @@ QR_SIZE_8 = b'\x1D\x28\x6B\x03\x00\x31\x43\x08'
 QR_ERROR_M  = b'\x1D\x28\x6B\x03\x00\x31\x45\x31'      # error correction M
 QR_PRINT    = b'\x1D\x28\x6B\x03\x00\x31\x51\x30'      # print
 
-@app.route('/print', methods=['POST'])
-def print_receipt():
-    if request.is_json:
-        data = request.json
-    else:
-        data = request.form.to_dict()
-    connection_type = data.get("connection_type", "serial") #serial, network
-    locale = data.get("locale", "ko_KR")
-    message = data.get("message")
-    barcode = data.get("barcode")
-    qrcode = data.get("qrcode")
-    if not message:
-        return jsonify({"status": "error","message": "message가 없습니다."}), 400
-    if locale == 'ko_KR':
+
+def build_print_bytes(job):
+    if job["locale"] == 'ko_KR':
         encoding = 'cp949'
-    elif locale == 'ja_JP':
+    elif job["locale"] == 'ja_JP':
         encoding = 'shift_jis'
     else:
-        return jsonify({"status": "error", "message": '지원하지 않는 locale 입니다.'}), 400
-    print_bytes = INIT + message.encode(encoding, errors='replace')  
-    if barcode:
-        barcode_bytes = barcode.encode('ascii')
-        print_bytes += (
+        raise ValueError("지원하지 않는 locale")
+
+    b = INIT + job["full_message"].encode(encoding, errors='replace')
+
+    if job["barcode"]:
+        barcode_bytes = job["barcode"].encode('ascii')
+        b += (
             b'\n\n' +
             ALIGN_CENTER +
             BARCODE_HEIGHT +
@@ -197,11 +340,12 @@ def print_receipt():
             BARCODE_CODE128 +
             bytes([len(barcode_bytes)]) +
             barcode_bytes +
-            ALIGN_LEFT 
+            ALIGN_LEFT
         )
-    if qrcode:
-        qr_bytes = qrcode.encode('utf-8')
-        print_bytes += (
+
+    if job["qrcode"]:
+        qr_bytes = job["qrcode"].encode('utf-8')
+        b += (
             b'\n\n' +
             ALIGN_CENTER +
             QR_MODEL_2 +
@@ -211,37 +355,113 @@ def print_receipt():
             QR_PRINT +
             ALIGN_LEFT
         )
-    print_bytes += BLANK_SPACE + CUT
-    
-    if connection_type == 'serial':
-        port = data.get("port")
-        baud_rate = data.get("baud_rate")
-        if not port or not baud_rate:
-            return jsonify({"status": "error", "message": "Port 또는 Baud Rate가 없습니다."}), 400
-        baud_rate = int(baud_rate)
-        def job():
-            printer = serial.Serial(port, baud_rate, timeout=1)
-            printer.write(print_bytes)
-            printer.close()
 
-        print_queue.put(job)
-        return jsonify({"status": "queued", "message": "Print job queued."}), 200
-    elif connection_type == 'network':
-        ip = data.get("ip")
-        port = data.get("port")
-        if not ip or not port:
-            return jsonify({"status": "error", "message": "IP 또는 Port가 없습니다."}), 400
-        port = int(port)
-        def job():
+    b += BLANK_SPACE + CUT
+    return b
+
+def print_job(job):
+    try:
+        print_bytes = build_print_bytes(job)
+
+        if job["connection_type"] == "serial":
+            available = [p.device for p in list_ports.comports()]
+            if job["serial_port"] not in available:
+                raise Exception("Serial port not found")
+            with serial.Serial(job["serial_port"], job["baud_rate"], timeout=1) as printer:
+                if not printer.is_open:
+                    raise Exception("Serial port not open")
+                printer.write(print_bytes)
+                printer.flush()
+
+        else:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(3)
-                s.connect((ip, port))
+                s.connect((job["network_ip"], job["network_port"]))
                 s.sendall(print_bytes)
 
-        print_queue.put(job)
-        return jsonify({"status": "queued", "message": "Print job queued."}), 200
+        update_job(job["job_id"], status="printed", printed_at=datetime.now().isoformat())
+
+    except Exception as e:
+        update_job(job["job_id"], status="failed", error_message=str(e))
+
+
+
+@app.route('/print', methods=['POST'])
+def print_receipt():
+    data = request.get_json() if request.is_json else request.form.to_dict()
+
+    connection_type = data.get("connection_type", "serial")
+    locale = data.get("locale", "ko_KR")
+    message = data.get("message")
+    barcode = data.get("barcode")
+    qrcode = data.get("qrcode")
+
+    if connection_type == "serial":
+        serial_port = data.get("port")
+        baud_rate = data.get("baud_rate")
+        if not serial_port or not baud_rate:
+            return jsonify({"status":"error","message":"Port 또는 Baud Rate가 없습니다."}), 400
+        baud_rate = int(baud_rate)
+        network_ip = None
+        network_port = None
     else:
-        return jsonify({"status": "error", "message": '지원하지 않는 connection_type 입니다.'}), 400
+        network_ip = data.get("ip")
+        network_port = data.get("port", 0)
+        if not network_ip or not network_port:
+            return jsonify({"status":"error","message":"IP 또는 Port가 없습니다."}), 400
+        network_port = int(network_port)
+        serial_port = None
+        baud_rate = None
+
+    job_id = str(uuid.uuid4())
+    job = {
+        "job_id": job_id,
+        "created_at": datetime.now().isoformat(),
+        "printed_at": None,
+        "connection_type": connection_type,
+        "serial_port": serial_port,
+        "baud_rate": baud_rate,
+        "network_ip": network_ip,
+        "network_port": network_port,
+        "locale": locale,
+        "full_message": message,
+        "barcode": barcode,
+        "qrcode": qrcode,
+        "status": "queued",
+        "error_message": None,
+        "retry_count": 0
+    }
+
+    insert_job(job)
+    print_queue.put(job)
+
+    return jsonify({"status":"queued", "message":"Print job queued.", "job_id": job_id}), 200
+
+@app.route('/reprint', methods=['POST'])
+def reprint_job():
+    data = request.get_json() if request.is_json else request.form.to_dict()
+    old_job_id = data.get("job_id")
+
+    old = get_job(old_job_id)
+    if not old:
+        return jsonify({"status":"error","message":"job not found"}), 404
+    
+    if old.get("retry_count", 0) >= MAX_RETRY:
+        return jsonify({"status":"error", "message":"재출력 최대 횟수 초과"}), 400
+
+    new_job = dict(old)
+    new_job["job_id"] = str(uuid.uuid4())
+    new_job["created_at"] = datetime.now().isoformat()
+    new_job["printed_at"] = None
+    new_job["status"] = "queued"
+    new_job["error_message"] = None
+    new_job["retry_count"] = 0
+
+    insert_job(new_job)
+    increment_retry_count(old_job_id)
+    print_queue.put(new_job)
+
+    return jsonify({"status":"queued", "message":"Print job queued.", "job_id": new_job["job_id"]}), 200
 
 
 def qr_store(data: bytes) -> bytes:
@@ -275,10 +495,14 @@ def create_tray():
     def open_web(icon, item):
         webbrowser.open(f"http://127.0.0.1:{PORT}/")
 
+    def open_log(icon, item):
+        webbrowser.open(f"http://127.0.0.1:{PORT}/log")
+
     image = Image.open(resource_path("printer.ico"))
 
     tray_menu = pystray.Menu(
         item('테스트 페이지 열기', open_web),
+        item('프린트 Log', open_log),
         item('시작 프로그램 등록', toggle_startup, checked=lambda _: is_in_startup()),
         item('종료', on_exit)
     )
@@ -356,6 +580,8 @@ def image_to_esc_bytes(img):
     return data
 
 if __name__ == '__main__':
+    init_db()
+    cleanup_old_jobs(7)
     if is_port_in_use(PORT):
         # 이미 실행 중이면 안내 후 종료
         show_splash_message("Coleslaw Printer는 이미 실행 중입니다.", timeout=3000)
