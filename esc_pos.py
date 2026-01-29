@@ -8,6 +8,7 @@ import winreg
 import webbrowser
 import requests, math, time, base64
 
+from queue import Queue
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
@@ -21,6 +22,21 @@ from PyQt6.QtGui import QFont, QColor
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "*"}})
 PORT = 5050
+
+print_queue = Queue()
+
+def printer_worker():
+    while True:
+        job = print_queue.get()
+        try:
+            job()
+        except Exception as e:
+            print("Print job error:", e)
+        finally:
+            print_queue.task_done()
+
+threading.Thread(target=printer_worker, daemon=True).start()
+
 
 class SplashScreen(QWidget):
     def __init__(self, message="Coleslaw Printer 서버를 준비 중입니다...", timeout=3000):
@@ -156,58 +172,77 @@ def print_receipt():
         data = request.json
     else:
         data = request.form.to_dict()
-
+    connection_type = data.get("connection_type", "serial") #serial, network
     locale = data.get("locale", "ko_KR")
-    port = data.get("port", "COM2")
-    baud_rate = data.get("baud_rate", 9600)
     message = data.get("message")
     barcode = data.get("barcode")
     qrcode = data.get("qrcode")
+    if not message:
+        return jsonify({"status": "error","message": "message가 없습니다."}), 400
     if locale == 'ko_KR':
         encoding = 'cp949'
     elif locale == 'ja_JP':
         encoding = 'shift_jis'
     else:
-        return jsonify({"status": "error", "message": '지원하지 않는 locale 입니다'}), 400
+        return jsonify({"status": "error", "message": '지원하지 않는 locale 입니다.'}), 400
+    print_bytes = INIT + message.encode(encoding, errors='replace')  
+    if barcode:
+        barcode_bytes = barcode.encode('ascii')
+        print_bytes += (
+            b'\n\n' +
+            ALIGN_CENTER +
+            BARCODE_HEIGHT +
+            BARCODE_WIDTH +
+            HRI_POSITION +
+            BARCODE_CODE128 +
+            bytes([len(barcode_bytes)]) +
+            barcode_bytes +
+            ALIGN_LEFT 
+        )
+    if qrcode:
+        qr_bytes = qrcode.encode('utf-8')
+        print_bytes += (
+            b'\n\n' +
+            ALIGN_CENTER +
+            QR_MODEL_2 +
+            QR_SIZE_8 +
+            QR_ERROR_M +
+            qr_store(qr_bytes) +
+            QR_PRINT +
+            ALIGN_LEFT
+        )
+    print_bytes += BLANK_SPACE + CUT
+    
+    if connection_type == 'serial':
+        port = data.get("port")
+        baud_rate = data.get("baud_rate")
+        if not port or not baud_rate:
+            return jsonify({"status": "error", "message": "Port 또는 Baud Rate가 없습니다."}), 400
+        baud_rate = int(baud_rate)
+        def job():
+            printer = serial.Serial(port, baud_rate, timeout=1)
+            printer.write(print_bytes)
+            printer.close()
 
-    try:
-        printer = serial.Serial(port, baud_rate, timeout=1)
+        print_queue.put(job)
+        return jsonify({"status": "queued", "message": "Print job queued."}), 200
+    elif connection_type == 'network':
+        ip = data.get("ip")
+        port = data.get("port")
+        if not ip or not port:
+            return jsonify({"status": "error", "message": "IP 또는 Port가 없습니다."}), 400
+        port = int(port)
+        def job():
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(3)
+                s.connect((ip, port))
+                s.sendall(print_bytes)
 
-        print_bytes = INIT + message.encode(encoding, errors='replace')
-        
-        if barcode:
-            barcode_bytes = barcode.encode('ascii')
-            print_bytes += (
-                b'\n\n' +
-                ALIGN_CENTER +
-                BARCODE_HEIGHT +
-                BARCODE_WIDTH +
-                HRI_POSITION +
-                BARCODE_CODE128 +
-                bytes([len(barcode_bytes)]) +
-                barcode_bytes +
-                ALIGN_LEFT 
-            )
-        if qrcode:
-            qr_bytes = qrcode.encode('utf-8')
+        print_queue.put(job)
+        return jsonify({"status": "queued", "message": "Print job queued."}), 200
+    else:
+        return jsonify({"status": "error", "message": '지원하지 않는 connection_type 입니다.'}), 400
 
-            print_bytes += (
-                b'\n\n' +
-                ALIGN_CENTER +
-                QR_MODEL_2 +
-                QR_SIZE_8 +
-                QR_ERROR_M +
-                qr_store(qr_bytes) +
-                QR_PRINT +
-                ALIGN_LEFT
-            )
-        print_bytes += BLANK_SPACE + CUT
-        printer.write(print_bytes)
-        printer.close()
-        return jsonify({"status": "success", "message": "Printed successfully."}), 200
-    except Exception as e:
-        print(e)
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 def qr_store(data: bytes) -> bytes:
     length = len(data) + 3
