@@ -34,6 +34,7 @@ MAX_RETRY = 5
 
 print_queue = Queue()
 
+APP_NAME = "ColeslawPrinter"
 APP_DIR = Path(os.getenv("LOCALAPPDATA")) / "ColeslawPrinter"
 APP_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = APP_DIR / "print_jobs.db"
@@ -200,7 +201,7 @@ def show_notification(title, message):
     elif current_os == "Windows":
         try:
             from plyer import notification
-            notification.notify(title=title, message=message, app_name='ESC/POS Printer', timeout=5)
+            notification.notify(title=title, message=message, app_name=APP_NAME, timeout=5)
         except:
             print("plyer 알림 실패")
     else:
@@ -210,54 +211,54 @@ def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('127.0.0.1', port)) == 0
 
-def add_to_startup(app_name="PrintServer", exe_path=None):
+def add_to_startup(exe_path=None):
     if exe_path is None:
         exe_path = sys.executable
     key = winreg.HKEY_CURRENT_USER
     reg_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
     try:
         registry_key = winreg.OpenKey(key, reg_path, 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(registry_key, app_name, 0, winreg.REG_SZ, exe_path)
+        winreg.SetValueEx(registry_key, APP_NAME, 0, winreg.REG_SZ, exe_path)
         winreg.CloseKey(registry_key)
         return True
     except Exception as e:
         print(f"등록 실패: {e}")
         return False
 
-def remove_from_startup(app_name="PrintServer"):
+def remove_from_startup():
     key = winreg.HKEY_CURRENT_USER
     reg_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
     try:
         registry_key = winreg.OpenKey(key, reg_path, 0, winreg.KEY_SET_VALUE)
-        winreg.DeleteValue(registry_key, app_name)
+        winreg.DeleteValue(registry_key, APP_NAME)
         winreg.CloseKey(registry_key)
         return True
     except Exception as e:
         print(f"제거 실패: {e}")
         return False
 
-def is_in_startup(app_name="PrintServer"):
+def is_in_startup():
     key = winreg.HKEY_CURRENT_USER
     reg_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
     try:
         registry_key = winreg.OpenKey(key, reg_path, 0, winreg.KEY_READ)
-        value, _ = winreg.QueryValueEx(registry_key, app_name)
+        value, _ = winreg.QueryValueEx(registry_key, APP_NAME)
         winreg.CloseKey(registry_key)
         return value == sys.executable
     except FileNotFoundError:
         return False
 
-def cleanup_old_startup_entry(app_name="PrintServer"):
+def cleanup_old_startup_entry():
     key = winreg.HKEY_CURRENT_USER
     reg_path = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
     current_path = sys.executable
     try:
         registry_key = winreg.OpenKey(key, reg_path, 0, winreg.KEY_READ)
-        registered_path, _ = winreg.QueryValueEx(registry_key, app_name)
+        registered_path, _ = winreg.QueryValueEx(registry_key, APP_NAME)
         winreg.CloseKey(registry_key)
         if registered_path != current_path:
             print(f"[\u26a0\ufe0f] 등록된 경로가 현재 실행 경로와 다르네요. 기존 경로 제거: {registered_path}")
-            remove_from_startup(app_name)
+            remove_from_startup(APP_NAME)
     except FileNotFoundError:
         pass
 
