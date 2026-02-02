@@ -502,10 +502,10 @@ def create_tray():
     image = Image.open(resource_path("printer.ico"))
 
     tray_menu = pystray.Menu(
-        item('테스트 페이지 열기', open_web),
-        item('프린트 Log', open_log),
-        item('시작 프로그램 등록', toggle_startup, checked=lambda _: is_in_startup()),
-        item('종료', on_exit)
+        item('Test Page', open_web),
+        item('Log', open_log),
+        item('Run at Startup ', toggle_startup, checked=lambda _: is_in_startup()),
+        item('Exit', on_exit)
     )
 
     tray_icon = pystray.Icon("print_server", image, "Coleslaw Printer", tray_menu)
@@ -585,11 +585,11 @@ if __name__ == '__main__':
     cleanup_old_jobs(7)
     if is_port_in_use(PORT):
         # 이미 실행 중이면 안내 후 종료
-        show_splash_message("Coleslaw Printer는 이미 실행 중입니다.", timeout=3000)
+        show_splash_message("Coleslaw Printer Server is already running.", timeout=3000)
         sys.exit(0)
     else:
         # 서버 실행 준비 완료 메시지 후 실행
-        show_splash_message("Coleslaw Printer 서버를 준비 중입니다...", timeout=3000)
+        show_splash_message("Loading Coleslaw Printer Server...", timeout=3000)
 
         if platform.system() == "Windows":
             cleanup_old_startup_entry()
