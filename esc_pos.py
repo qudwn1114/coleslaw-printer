@@ -397,7 +397,7 @@ def print_receipt():
     qrcode = data.get("qrcode")
 
     if connection_type == "serial":
-        serial_port = data.get("port")
+        serial_port = data.get("serial_port")
         baud_rate = data.get("baud_rate")
         if not serial_port or not baud_rate:
             return jsonify({"status":"error","message":"Port 또는 Baud Rate가 없습니다."}), 400
@@ -405,8 +405,8 @@ def print_receipt():
         network_ip = None
         network_port = None
     else:
-        network_ip = data.get("ip")
-        network_port = data.get("port", 0)
+        network_ip = data.get("network_ip")
+        network_port = data.get("network_port", 0)
         if not network_ip or not network_port:
             return jsonify({"status":"error","message":"IP 또는 Port가 없습니다."}), 400
         network_port = int(network_port)

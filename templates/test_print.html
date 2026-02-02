@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>프린터 테스트</title>
+    <title>Printer Test</title>
     <script>
         function toggleConnectionType() {
             const type = document.querySelector('input[name="connType"]:checked').value;
@@ -27,18 +27,18 @@
             };
 
             if (connType === "serial") {
-                payload.port = document.getElementById("serialPort").value;
+                payload.serial_port = document.getElementById("serialPort").value;
                 payload.baud_rate = parseInt(document.getElementById("baudRate").value);
 
-                if (!payload.port || !payload.baud_rate) {
+                if (!payload.serial_port || !payload.baud_rate) {
                     alert("Serial 설정을 모두 입력해주세요.");
                     return;
                 }
             } else {
-                payload.ip = document.getElementById("ip").value;
-                payload.port = parseInt(document.getElementById("netPort").value);
+                payload.network_ip = document.getElementById("networkIp").value;
+                payload.network_port = parseInt(document.getElementById("networkPort").value);
 
-                if (!payload.ip || !payload.port) {
+                if (!payload.network_ip || !payload.network_port) {
                     alert("Network 설정을 모두 입력해주세요.");
                     return;
                 }
@@ -57,7 +57,7 @@
 </head>
 
 <body onload="toggleConnectionType()">
-    <h1>프린터 테스트 페이지</h1>
+    <h1>ESC Printer Test</h1>
 
     <div>
         <label>Connection Type:</label><br>
@@ -88,10 +88,10 @@
     </div>
     <div id="networkSettings" style="display:none;">
         <label>IP Address:</label><br>
-        <input type="text" id="ip" placeholder="192.168.0.100"><br>
+        <input type="text" id="networkIp" placeholder="192.168.0.100"><br>
 
         <label>Port:</label><br>
-        <input type="number" id="netPort" value="9100">
+        <input type="number" id="networkPort" value="9100">
     </div>
     <br>
 
@@ -107,7 +107,7 @@
 
     <div>
         <label>Message:</label><br>
-        <textarea id="message" rows="5" cols="40">테스트 영수증입니다.</textarea>
+        <textarea id="message" rows="5" cols="40">Test Receipt!!!</textarea>
     </div>
 
     <br>
@@ -126,6 +126,6 @@
 
     <br>
 
-    <button onclick="printReceipt()">영수증 인쇄</button>
+    <button onclick="printReceipt()">Print</button>
 </body>
 </html>
