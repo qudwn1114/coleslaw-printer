@@ -20,11 +20,8 @@ from flask_cors import CORS
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QGraphicsDropShadowEffect
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QColor
-
 from pathlib import Path
+import ctypes
 
 app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "*"}})
@@ -154,40 +151,6 @@ def worker():
         print_queue.task_done()
 
 threading.Thread(target=worker, daemon=True).start()
-
-
-class SplashScreen(QWidget):
-    def __init__(self, message="Coleslaw Printer 서버를 준비 중입니다...", timeout=3000):
-        super().__init__()
-        self.setWindowTitle("로딩 중")
-        self.setFixedSize(400, 150)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
-        self.setStyleSheet("background-color: white; border-radius: 15px;")
-
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 150))
-        shadow.setOffset(0, 5)
-        self.setGraphicsEffect(shadow)
-
-        self.label = QLabel(message, self)
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        self.label.setGeometry(0, 0, 400, 150)
-
-        screen = QApplication.primaryScreen().availableGeometry()
-        x = (screen.width() - self.width()) // 2
-        y = (screen.height() - self.height()) // 2
-        self.move(x, y)
-
-        QTimer.singleShot(timeout, self.close)
-
-def show_splash_message(message, timeout=3000):
-    app = QApplication(sys.argv)
-    splash = SplashScreen(message=message, timeout=timeout)
-    splash.show()
-    QTimer.singleShot(timeout, app.quit)
-    app.exec()
 
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
@@ -584,12 +547,15 @@ if __name__ == '__main__':
     init_db()
     cleanup_old_jobs(7)
     if is_port_in_use(PORT):
-        # 이미 실행 중이면 안내 후 종료
-        show_splash_message("Coleslaw Printer Server is already running.", timeout=3000)
+        ctypes.windll.user32.MessageBoxW(
+            0, 
+            "Coleslaw Printer Server is already running.", 
+            "Coleslaw Printer", 
+            0x30
+        )
         sys.exit(0)
     else:
-        # 서버 실행 준비 완료 메시지 후 실행
-        show_splash_message("Loading Coleslaw Printer Server...", timeout=3000)
+        print("Starting Coleslaw Printer Server...")
 
         if platform.system() == "Windows":
             cleanup_old_startup_entry()
